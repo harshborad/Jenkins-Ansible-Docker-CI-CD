@@ -490,79 +490,80 @@ automate project update pipline
  
 pipeline {
     agent any
- 
+
     environment {
         ANSIBLE_USER = "ubuntu"
-        ANSIBLE_HOST = "3.7.253.121"                    // Ansible EC2 public IP
+        ANSIBLE_HOST = "65.0.95.48"                     // Ansible EC2 public IP
         PEM_KEY = "/var/lib/jenkins/jenkins.pem"
-        JOB_NAME = "meet"                               // Jenkins Job Name
-        DOCKERHUB_USER = "<Your DockerHub User Name>"
-        DOCKERHUB_PASS = "<Your DockerHub Password>"
-        PRIVATE_DOCKER_HOST = "172.31.14.70"            // Docker Host private IP
+        JOB_NAME = "j-a-d-pipeline"                     // Updated to remove spaces (Docker doesn't allow spaces)
+        DOCKERHUB_USER = "hb161"
+        DOCKERHUB_PASS = "borad@h161"
+        PRIVATE_DOCKER_HOST = "172.31.35.62"            // Docker Host private IP
     }
- 
+
     stages {
         stage('Clone GitHub Repository') {
             steps {
-                git branch: 'main', url: '<Your GitHub Repo>'
+                git branch: 'main', url: 'https://github.com/harshborad/Jenkins-Ansible-Docker-CI-CD.git'
             }
         }
- 
+
         stage('Transfer Dockerfile to Ansible') {
             steps {
                 sh """
-                rsync -avh -e "ssh -o StrictHostKeyChecking=no -i $PEM_KEY" $WORKSPACE/Dockerfile $ANSIBLE_USER@$ANSIBLE_HOST:/opt/
+                ssh -o StrictHostKeyChecking=no -i "$PEM_KEY" $ANSIBLE_USER@$ANSIBLE_HOST 'mkdir -p /opt'
+                rsync -avh -e "ssh -o StrictHostKeyChecking=no -i $PEM_KEY" "$WORKSPACE/Dockerfile" $ANSIBLE_USER@$ANSIBLE_HOST:/opt/ || true
                 """
             }
         }
- 
+
         stage('Build and Push Docker Image on Ansible') {
             steps {
                 sh """
-                ssh -o StrictHostKeyChecking=no -i "$PEM_KEY" $ANSIBLE_USER@$ANSIBLE_HOST << 'EOF'
+                ssh -o StrictHostKeyChecking=no -i "$PEM_KEY" $ANSIBLE_USER@$ANSIBLE_HOST << EOF
                 cd /opt
- 
-                echo "$DOCKERHUB_PASS" | sudo docker login -u $DOCKERHUB_USER --password-stdin
- 
-                sudo docker image build -t ${JOB_NAME}v1.${BUILD_ID} .
- 
-                sudo docker image tag ${JOB_NAME}v1.${BUILD_ID} ${DOCKERHUB_USER}/${JOB_NAME}v1.${BUILD_ID}
-                sudo docker image tag ${JOB_NAME}v1.${BUILD_ID} ${DOCKERHUB_USER}/${JOB_NAME}:latest
- 
-                sudo docker image push ${DOCKERHUB_USER}/${JOB_NAME}v1.${BUILD_ID}
+
+                echo "$DOCKERHUB_PASS" | sudo docker login -u "$DOCKERHUB_USER" --password-stdin
+
+                sudo docker image build -t ${JOB_NAME}v1.\${BUILD_ID} .
+
+                sudo docker image tag ${JOB_NAME}v1.\${BUILD_ID} ${DOCKERHUB_USER}/${JOB_NAME}v1.\${BUILD_ID}
+                sudo docker image tag ${JOB_NAME}v1.\${BUILD_ID} ${DOCKERHUB_USER}/${JOB_NAME}:latest
+
+                sudo docker image push ${DOCKERHUB_USER}/${JOB_NAME}v1.\${BUILD_ID}
                 sudo docker image push ${DOCKERHUB_USER}/${JOB_NAME}:latest
- 
-                sudo docker image rmi ${JOB_NAME}v1.${BUILD_ID} \\
-                                     ${DOCKERHUB_USER}/${JOB_NAME}v1.${BUILD_ID} \\
+
+                sudo docker image rmi ${JOB_NAME}v1.\${BUILD_ID} \\
+                                     ${DOCKERHUB_USER}/${JOB_NAME}v1.\${BUILD_ID} \\
                                      ${DOCKERHUB_USER}/${JOB_NAME}:latest
 EOF
                 """
             }
         }
- 
+
         stage('Create Inventory & Playbook on Ansible') {
-  steps {
-    sh """
-    ssh -o StrictHostKeyChecking=no -i $PEM_KEY $ANSIBLE_USER@$ANSIBLE_HOST << 'EOF'
-    sudo mkdir -p /root/sourcecode
- 
-    sudo tee /root/sourcecode/inventory > /dev/null <<EOL
+            steps {
+                sh """
+                ssh -o StrictHostKeyChecking=no -i "$PEM_KEY" $ANSIBLE_USER@$ANSIBLE_HOST << 'EOF'
+                sudo mkdir -p /root/sourcecode
+
+                sudo tee /root/sourcecode/inventory > /dev/null <<EOL
 [dockerhost]
 $PRIVATE_DOCKER_HOST ansible_user=root ansible_become=true
 EOL
- 
-    sudo tee /root/sourcecode/run_container.yml > /dev/null <<EOL
+
+                sudo tee /root/sourcecode/run_container.yml > /dev/null <<EOL
 - hosts: all
   become: yes
   tasks:
     - name: Pull latest image manually
       ansible.builtin.shell: docker pull ${DOCKERHUB_USER}/${JOB_NAME}:latest
- 
+
     - name: Stop and remove old container
       community.docker.docker_container:
         name: cloudknowledge-container
         state: absent
- 
+
     - name: Run updated container
       community.docker.docker_container:
         name: cloudknowledge-container
@@ -572,13 +573,11 @@ EOL
         published_ports:
           - "9000:80"
 EOL
- 
 EOF
-    """
-  }
-}
- 
- 
+                """
+            }
+        }
+
         stage('Run Ansible Playbook to Deploy') {
             steps {
                 sh """
@@ -589,7 +588,7 @@ EOF
             }
         }
     }
- 
+
     post {
         success {
             echo "✅ Deployment successful. Visit your project at http://<Docker-Public-IP>:9000"
@@ -599,6 +598,7 @@ EOF
         }
     }
 }
+
 ```
  
 ### Step 34: Access Deployed Web App
